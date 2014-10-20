@@ -2,6 +2,7 @@ package webtester
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -43,8 +44,13 @@ type ScenarioExecutor struct {
 }
 
 type statusResponse struct {
-	status int
-	err    error
+	status   int
+	err      error
+	duration time.Duration
+}
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }
 
 func randomDuration(max int) int {
@@ -109,7 +115,6 @@ func randomMoments(duration time.Duration, requestsPerSecond int) []time.Duratio
 // For each request the input data is created by using the provided InputDataSampler and the resulting
 // scenario is written to the file specified by the "scenarioFile" parameter.
 func CreateNewTestScenario(duration time.Duration, requestsPerSecond int, ids CreateDataSample, scenarioFile string) {
-	rand.Seed(time.Now().UnixNano())
 
 	moments := randomMoments(duration, requestsPerSecond)
 
@@ -137,6 +142,14 @@ func CreateNewTestScenario(duration time.Duration, requestsPerSecond int, ids Cr
 }
 
 func executeRequest(resultChanel chan statusResponse, t0 time.Duration, client *http.Client, request *http.Request, hr HandleResponse) {
+	if client == nil {
+		log.Criticalf("Nil client.")
+		return
+	}
+	if request == nil {
+		log.Criticalf("Nil request.")
+		return
+	}
 
 	timer := time.NewTimer(t0)
 
@@ -144,10 +157,11 @@ func executeRequest(resultChanel chan statusResponse, t0 time.Duration, client *
 
 	var err error
 
+	tStart := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
 		log.Errorf("Error sending a request via the specified client :: %v", err)
-		resultChanel <- statusResponse{response.StatusCode, err}
+		resultChanel <- statusResponse{response.StatusCode, err, time.Since(tStart)}
 		return
 	}
 
@@ -155,15 +169,20 @@ func executeRequest(resultChanel chan statusResponse, t0 time.Duration, client *
 		err = hr(response)
 		if err != nil {
 			log.Errorf("Error handling the received response :: %v", response)
-			resultChanel <- statusResponse{response.StatusCode, err}
+			resultChanel <- statusResponse{response.StatusCode, err, time.Since(tStart)}
 			return
 		}
 	}
 
-	resultChanel <- statusResponse{response.StatusCode, nil}
+	resultChanel <- statusResponse{response.StatusCode, nil, time.Since(tStart)}
 }
 
 func ExecuteTestScenario(scenarioFile string, client *http.Client, cnr CreateNewRequest, hr HandleResponse) error {
+
+	if client == nil {
+		log.Criticalf("Nil client.")
+		return errors.New("Nil client")
+	}
 
 	data, err := ioutil.ReadFile(scenarioFile)
 	if err != nil {
@@ -191,5 +210,24 @@ func ExecuteTestScenario(scenarioFile string, client *http.Client, cnr CreateNew
 
 	}
 
+	var noSamples = len(samples)
+	var totalDuration time.Duration
+	for {
+		s := <-resultChanel
+		if s.err != nil {
+			log.Warningf("Received error :: %v", err)
+		}
+		if s.status != 200 {
+			log.Warningf("Received status code :: %v", s.status)
+		}
+		totalDuration = totalDuration + s.duration
+		noSamples = noSamples - 1
+
+		if noSamples <= 0 {
+			break
+		}
+	}
+
+	log.Infof("Average response time :: %v", time.Duration(math.Floor(float64(totalDuration)/float64(len(samples)))))
 	return nil
 }
