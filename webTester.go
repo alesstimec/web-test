@@ -110,10 +110,11 @@ func randomMoments(duration time.Duration, requestsPerSecond int) []time.Duratio
 	return moments
 }
 
-// CreateNewTestScenario creates a new test scenario of length specified by the "duration" parameter.
-// During the test the average load on the server will be as specified by the "requestsPerSecond" paramerer.
-// For each request the input data is created by using the provided InputDataSampler and the resulting
-// scenario is written to the file specified by the "scenarioFile" parameter.
+//To create a new test scenario the CreateNewTestScenario should be used. This creates a test scenario of
+//length specified by the "duration" parameter. During the test the average load of the server is specified by the number
+//of requests that are to be fired each second (specified by the "requestsPerSecond" parameter).
+//For each request the input data is created by using the provided CreateDataSample function and the resulting
+//scenario is written to the file specified by the "scenarioFile" parameter.
 func CreateNewTestScenario(duration time.Duration, requestsPerSecond int, ids CreateDataSample, scenarioFile string) {
 
 	moments := randomMoments(duration, requestsPerSecond)
@@ -177,6 +178,11 @@ func executeRequest(resultChanel chan statusResponse, t0 time.Duration, client *
 	resultChanel <- statusResponse{response.StatusCode, nil, time.Since(tStart)}
 }
 
+// ExecuteTestScenario function executes a test scenario description stored in the "scenarioFile". Http client
+// must be provided, which is reused for all connections. In addition one must provide two fucntions: 1) CreateNewRequest
+// function which takes interface{} as input and produces a new http Request to the desired server. Input is read from
+// scenario definition file (json - only exported fields are available). 2) The HandleResponse function which is given
+// http Response and returns an error - in this function one may do erro handling, additional logging, etc.
 func ExecuteTestScenario(scenarioFile string, client *http.Client, cnr CreateNewRequest, hr HandleResponse) error {
 
 	if client == nil {
