@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/alesstimec/web-tester"
+	"github.com/alesstimec/webtester"
 )
 
 func CreateNewInputData() interface{} {
